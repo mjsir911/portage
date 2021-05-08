@@ -7,6 +7,7 @@ import re
 import stat
 import sys
 import warnings
+from pathlib import Path
 
 from portage import os
 from portage import _encodings
@@ -28,7 +29,7 @@ from portage.localization import _
 
 ignored_dbentries = ("CONTENTS", "environment.bz2")
 
-def update_dbentry(update_cmd, mycontent, eapi=None, parent=None):
+def update_dbentry(update_cmd, mycontent: str, eapi=None, parent=None):
 
 	if parent is not None:
 		eapi = parent.eapi
@@ -39,6 +40,7 @@ def update_dbentry(update_cmd, mycontent, eapi=None, parent=None):
 
 		# Use isvalidatom() to check if this move is valid for the
 		# EAPI (characters allowed in package names may vary).
+		# if isinstance(mycontent, (bytes, int)): breakpoint()
 		if old_value in mycontent and isvalidatom(new_value, eapi=eapi):
 			# this split preserves existing whitespace
 			split_content = re.split(r'(\s+)', mycontent)
@@ -114,11 +116,11 @@ def update_dbentries(update_iter, mydata, eapi=None, parent=None):
 	dict containing only the updated items."""
 	updated_items = {}
 	for k, mycontent in mydata.items():
-		k_unicode = _unicode_decode(k,
+		k_unicode = _unicode_decode(k, error=False,
 			encoding=_encodings['repo.content'], errors='replace')
 		if k_unicode not in ignored_dbentries:
 			orig_content = mycontent
-			mycontent = _unicode_decode(mycontent,
+			mycontent = _unicode_decode(mycontent, error=False,
 				encoding=_encodings['repo.content'], errors='replace')
 			is_encoded = mycontent is not orig_content
 			orig_content = mycontent
@@ -156,7 +158,7 @@ def fixdbentries(update_iter, dbdir, eapi=None, parent=None):
 		write_atomic(file_path, mycontent, encoding=_encodings['repo.content'])
 	return len(updated_items) > 0
 
-def grab_updates(updpath, prev_mtimes=None):
+def grab_updates(updpath: Path, prev_mtimes=None):
 	"""Returns all the updates from the given directory as a sorted list of
 	tuples, each containing (file_path, statobj, content).  If prev_mtimes is
 	given then updates are only returned if one or more files have different
@@ -167,31 +169,25 @@ def grab_updates(updpath, prev_mtimes=None):
 	the source package of a move that comes somewhere later in the entire
 	sequence of files.
 	"""
-	try:
-		mylist = os.listdir(updpath)
-	except OSError as oe:
-		if oe.errno == errno.ENOENT:
-			raise DirectoryNotFound(updpath)
-		raise
+	if not updpath.is_dir():
+		raise DirectoryNotFound(updpath)
 	if prev_mtimes is None:
 		prev_mtimes = {}
 	# validate the file name (filter out CVS directory, etc...)
-	mylist = [myfile for myfile in mylist if len(myfile) == 7 and myfile[1:3] == "Q-"]
+	mylist = list(updpath.glob('[1-4]Q-????'))
 	if len(mylist) == 0:
 		return []
 
 	# sort by (year, quarter)
-	mylist.sort(key=lambda x: (x[3:], x[:2]))
+	mylist.sort(key=lambda x: (x.name[3:], x.name[:2]))
 
 	update_data = []
-	for myfile in mylist:
-		file_path = os.path.join(updpath, myfile)
+	for file_path in mylist:
 		mystat = os.stat(file_path)
 		if update_data or \
 			file_path not in prev_mtimes or \
 			int(prev_mtimes[file_path]) != mystat[stat.ST_MTIME]:
-			f = io.open(_unicode_encode(file_path,
-				encoding=_encodings['fs'], errors='strict'),
+			f = io.open(file_path,
 				mode='r', encoding=_encodings['repo.content'], errors='replace')
 			content = f.read()
 			f.close()
@@ -272,7 +268,7 @@ def parse_updates(mycontent):
 		myupd.append(mysplit)
 	return myupd, errors
 
-def update_config_files(config_root, protect, protect_mask, update_iter,
+def update_config_files(config_root: Path, protect, protect_mask, update_iter,
 	match_callback=None, case_insensitive=False):
 	"""Perform global updates on /etc/portage/package.*, /etc/portage/profile/package.*,
 	/etc/portage/profile/packages and /etc/portage/sets.
@@ -300,19 +296,21 @@ def update_config_files(config_root, protect, protect_mask, update_iter,
 		"package.mask", "package.properties",
 		"package.unmask", "package.use", "sets"
 	]
-	myxfiles += [os.path.join("profile", x) for x in (
+	myxfiles += [Path("profile") / x for x in (
 		"packages", "package.accept_keywords",
 		"package.keywords", "package.mask",
 		"package.unmask", "package.use",
 		"package.use.force", "package.use.mask",
 		"package.use.stable.force", "package.use.stable.mask"
 	)]
-	abs_user_config = os.path.join(config_root, USER_CONFIG_PATH)
+	abs_user_config = config_root / USER_CONFIG_PATH
 	recursivefiles = []
 	for x in myxfiles:
-		config_file = os.path.join(abs_user_config, x)
+		config_file = abs_user_config / x
 		if os.path.isdir(config_file):
 			for parent, dirs, files in os.walk(config_file):
+				if not dirs:
+					continue
 				try:
 					parent = _unicode_decode(parent,
 						encoding=_encodings['fs'], errors='strict')
@@ -344,8 +342,7 @@ def update_config_files(config_root, protect, protect_mask, update_iter,
 		f = None
 		try:
 			f = io.open(
-				_unicode_encode(os.path.join(abs_user_config, x),
-				encoding=_encodings['fs'], errors='strict'),
+				abs_user_config / x,
 				mode='r', encoding=_encodings['content'],
 				errors='replace')
 			file_contents[x] = f.readlines()

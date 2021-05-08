@@ -5,6 +5,7 @@
 # This is a helper which ebuild processes can use
 # to communicate with portage's main python process.
 
+from pathlib import Path
 import errno
 import logging
 import os
@@ -106,11 +107,15 @@ class EbuildIpc:
 	# as long as the daemon process appears to be alive).
 	_COMMUNICATE_RETRY_TIMEOUT = 15 # seconds
 
+	fifo_dir: Path
+	ipc_in_fifo: Path
+	ipc_out_fifo: Path
+	ipc_lock_file: Path
 	def __init__(self):
-		self.fifo_dir = os.environ['PORTAGE_BUILDDIR']
-		self.ipc_in_fifo = os.path.join(self.fifo_dir, '.ipc_in')
-		self.ipc_out_fifo = os.path.join(self.fifo_dir, '.ipc_out')
-		self.ipc_lock_file = os.path.join(self.fifo_dir, '.ipc_lock')
+		self.fifo_dir = Path(os.environ['PORTAGE_BUILDDIR'])
+		self.ipc_in_fifo =   self.fifo_dir / '.ipc_in'
+		self.ipc_out_fifo =  self.fifo_dir / '.ipc_out'
+		self.ipc_lock_file = self.fifo_dir / '.ipc_lock'
 
 	def _daemon_is_alive(self):
 		try:

@@ -6,6 +6,7 @@ import logging
 import grp
 import pwd
 import warnings
+from pathlib import Path
 
 from collections import OrderedDict
 
@@ -93,8 +94,8 @@ class SyncManager:
 		self.module_names = self.module_controller.module_names
 		self.hooks = {}
 		for _dir in ["repo.postsync.d", "postsync.d"]:
-			postsync_dir = os.path.join(self.settings["PORTAGE_CONFIGROOT"],
-				portage.USER_CONFIG_PATH, _dir)
+			postsync_dir = (self.settings["PORTAGE_CONFIGROOT"] /
+				portage.USER_CONFIG_PATH / _dir)
 			hooks = OrderedDict()
 			for filepath in util._recursive_file_list(postsync_dir):
 				name = filepath.split(postsync_dir)[1].lstrip(os.sep)
@@ -124,7 +125,7 @@ class SyncManager:
 		self.emerge_config = emerge_config
 		self.settings, self.trees, self.mtimedb = emerge_config
 		self.xterm_titles = "notitles" not in self.settings.features
-		self.portdb = self.trees[self.settings['EROOT']]['porttree'].dbapi
+		self.portdb = self.trees[Path(self.settings['EROOT'])]['porttree'].dbapi
 		return SyncRepo(sync_task=AsyncFunction(target=self.sync,
 			kwargs=dict(emerge_config=emerge_config, repo=repo,
 			master_hooks=master_hooks)),
@@ -353,8 +354,7 @@ class SyncManager:
 			updatecache_flg = False
 
 		if updatecache_flg and \
-			os.path.exists(os.path.join(
-			repo.location, 'metadata', 'md5-cache')):
+			os.path.exists(repo.location / 'metadata' / 'md5-cache'):
 
 			# Only update cache for repo.location since that's
 			# the only one that's been synced here.
